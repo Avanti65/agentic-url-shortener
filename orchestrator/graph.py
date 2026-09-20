@@ -101,6 +101,32 @@ def coder_node(state: AgentState):
         "generated_code": {target_path: extracted_code}
     }
 
+
+def disk_writer_node(state: AgentState):
+    """
+    Takes the AI generated code from in memory and writes it to the physical file system
+    so the validator can compile and run tests against it.
+    """
+    print("\n[Node: Disk Writer] Writing generated code to disk...")
+    
+    generated_code = state.get("generated_code", {})
+    
+    if not generated_code:
+        print(" -> No code found in state to write.")
+        return {}
+        
+    for file_path, code_content in generated_code.items():
+        # Ensure the target directory exists before writing
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Write the new code to the file
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(code_content)
+            
+        print(f" -> Successfully updated: {file_path}")
+        
+    return {}
+
 def validator_node(state: AgentState):
     """
     Executes the .NET test suite against the generated code.
@@ -156,6 +182,7 @@ workflow = StateGraph(AgentState)
 # Add nodes
 workflow.add_node("planner", planner_node)
 workflow.add_node("coder", coder_node)
+workflow.add_node("disk_writer", disk_writer_node)
 workflow.add_node("validator", validator_node)
 workflow.add_node("human_gate", human_gate_node)
 
@@ -164,7 +191,8 @@ workflow.set_entry_point("planner")
 
 # Connect nodes
 workflow.add_edge("planner", "coder")
-workflow.add_edge("coder", "validator")
+workflow.add_edge("coder", "disk_writer")
+workflow.add_edge("disk_writer", "validator")
 
 # Add conditional edge
 workflow.add_conditional_edges(
