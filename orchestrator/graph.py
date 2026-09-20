@@ -41,52 +41,75 @@ Return ONLY the numbered steps as a plain text list, with no intro or outro text
 
 def coder_node(state: AgentState):
     """
-    Reads the plan and existing codebase, prompts the LLM to generate the updated C# code,
-    streams the output to the console in real-time, and updates state['generated_code'].
+    Reads the plan and entire existing codebase, prompts the LLM to generate the updated C# code
+    for specific files, streams the output to the console, and updates state['generated_code'].
     """
     print("\n" + "="*50)
-    print("[Node: Coder] Synthesizing C# code from plan...")
+    print("[Node: Coder] Synthesizing C# .NET 10 code from plan...")
     print("="*50 + "\n")
 
-    # Locate and read the existing Program.cs file for context
-    target_path = "src/UrlShortener/Program.cs"
-    if not os.path.exists(target_path):
-        for root, _, files in os.walk("src"):
-            if "Program.cs" in files:
-                target_path = os.path.join(root, "Program.cs")
-                break
+    # 1. Read the entire C# codebase for context
+    existing_codebase = ""
+    for root, dirs, files in os.walk("src/UrlShortener"):
+        # Skip build/compile folders
+        if "bin" in root or "obj" in root: 
+            continue
+            
+        for file in files:
+            if file.endswith(".cs"):
+                path = os.path.join(root, file)
+                # Normalize path to forward slashes for LLM consistency
+                path = path.replace("\\", "/")
+                with open(path, "r", encoding="utf-8") as f:
+                    existing_codebase += f"\n### File: {path}\n```csharp\n{f.read()}\n```\n"
 
-    existing_code = ""
-    if os.path.exists(target_path):
-        with open(target_path, "r", encoding="utf-8") as f:
-            existing_code = f.read()
-
-    # Format the execution plan from state
+    # 2. Format the execution plan from state
     plan_text = "\n".join(state.get("plan", []))
 
-    #  Construct the prompt securely without parsing confusion
+    # 3. Check for previous compiler errors
+    test_results = state.get("test_results", {})
+    build_errors = test_results.get("output", "")
+    
+    error_context = ""
+    if build_errors:
+        error_context = (
+            f"\n\n⚠️ PREVIOUS BUILD FAILED ⚠️\n"
+            f"Here are the compiler errors from your last attempt:\n"
+            f"```text\n{build_errors}\n```\n"
+            f"Please fix these specific errors in your new code."
+        )
+
+    # 4. Construct the prompt securely
     human_prompt = (
         f"User Request:\n{state['user_request']}\n\n"
         f"Execution Plan:\n{plan_text}\n\n"
-        f"Current Program.cs:\n```csharp\n{existing_code}\n```\n\n"
-        "Implement the requested changes into Program.cs. Ensure all existing routes, database contexts, and models remain functional alongside the new alias logic."
+        f"Current Codebase:\n{existing_codebase}\n"
+        f"{error_context}\n\n"
+        "Implement the requested changes. Modify ONLY the files that need updating (e.g., src/UrlShortener/Data/AppDbContext.cs, src/UrlShortener/Endpoints/UrlEndpoints.cs, etc.). "
+        "IMPORTANT: Do NOT redefine existing classes if they already exist in their own files. Respect the existing project structure."
     )
 
     messages = [
         SystemMessage(content=(
-            "You are a principal C# .NET 8 developer. Write clean, idiomatic Minimal API code. "
-            "Return ONLY the complete updated C# file contents enclosed in a single ```csharp markdown code fence. "
-            "Do not include conversational greetings, explanations, or notes outside the code fence."
+            "You are a principal C# .NET 10 developer. Write clean, idiomatic Minimal API code. "
+            "For EACH file you modify, you MUST output it using exactly this format:\n"
+            "### File: src/UrlShortener/path/to/file.cs\n"
+            "```csharp\n"
+            "// complete updated file code here\n"
+            "```\n"
+            "Output the ENTIRE contents of the file, not just the changes. Do not include conversational text outside the code blocks."
         )),
         HumanMessage(content=human_prompt)
     ]
 
-    # Stream response
+    # 5. Stream response tokens in real-time to the terminal
     llm = get_llm()
     full_response = ""
 
     for chunk in llm.stream(messages):
+        # Use our helper function to extract text cleanly
         text_piece = extract_text_from_content(chunk.content)
+        
         print(text_piece, end="", flush=True)
         full_response += text_piece
 
@@ -94,14 +117,27 @@ def coder_node(state: AgentState):
     print(" -> Code generation complete.")
     print("-"*50)
 
-    # 5. Extract raw code from markdown fences
-    code_match = re.search(r"```(?:csharp)?\s*(.*?)\s*```", full_response, re.DOTALL)
-    extracted_code = code_match.group(1) if code_match else full_response.strip()
+    # 6. Extract raw code for multiple files
+    file_updates = {}
+    
+    # Regex to find "### File: path/to/file.cs" followed by a csharp code block
+    pattern = r"### File:\s*(src/.*?\.cs)\s*```(?:csharp)?\s*(.*?)\s*```"
+    
+    for match in re.finditer(pattern, full_response, re.DOTALL):
+        file_path = match.group(1).strip()
+        code = match.group(2).strip()
+        file_updates[file_path] = code
+
+    # Fallback just in case the LLM outputs code without a file path header
+    if not file_updates:
+        code_match = re.search(r"```(?:csharp)?\s*(.*?)\s*```", full_response, re.DOTALL)
+        if code_match:
+            print(" -> Warning: File path header missing. Defaulting to Program.cs")
+            file_updates["src/UrlShortener/Program.cs"] = code_match.group(1).strip()
 
     return {
-        "generated_code": {target_path: extracted_code}
+        "generated_code": file_updates
     }
-
 
 def disk_writer_node(state: AgentState):
     """
