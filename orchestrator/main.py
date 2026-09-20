@@ -5,8 +5,11 @@ def main():
     print("Starting Agentic SDLC Orchestrator...\n")
     
     # The initial input to pass into the state machine
+    # Update the request to build the Click Tracking feature
     initial_state = {
-        "user_request": "Implement a custom alias feature for short URLs.",
+        "user_request": """Add a 'Clicks' integer property to the short URL database model with a default value of 0. 
+Update the GET redirect endpoint so that every time a short URL is accessed, the Clicks counter is incremented by 1 and saved to the database. 
+Make sure the new Clicks property is returned in the response when creating a new short URL.""",
         "retry_count": 0
     }
     

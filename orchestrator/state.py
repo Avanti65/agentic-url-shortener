@@ -13,3 +13,5 @@ class AgentState(TypedDict):
     # Validation & Metrics
     test_results: Dict[str, Any]
     retry_count: int
+
+    human_approved: bool
