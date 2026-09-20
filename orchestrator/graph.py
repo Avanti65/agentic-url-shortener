@@ -245,13 +245,45 @@ def validator_node(state: AgentState):
         "retry_count": current_retries + 1
     }
 
-def human_gate_node(state: AgentState):
+def human_gate_node(state):
     """
-    Acts as an approval checkpoint before code is considered finalized.
+    Acts as an approval checkpoint. Prompts the user via CLI to approve or reject.
+    Includes input validation to prevent typos from triggering unwanted loops.
     """
-    print("\n[Node: Human Gate] Feature ready. Pausing for human review...")
-    return {}
-
+    print("\n" + "="*50)
+    print("[Node: Human Gate] Code compiled successfully!")
+    print("="*50 + "\n")
+    
+    print("Please review the generated code or test the local endpoints.")
+    
+    # 1. Enforce strict 'y' or 'n' input
+    while True:
+        choice = input("Approve these changes? (y/n): ").strip().lower()
+        if choice in ['y', 'yes', 'n', 'no']:
+            break
+        print(" -> Invalid input. Please type 'y' or 'n'.")
+        
+    if choice in ['y', 'yes']:
+        print(" -> Changes approved! Finalizing workflow.")
+        return {"human_approved": True}
+    else:
+        # 2. Enforce that feedback cannot be empty
+        while True:
+            feedback = input("\n[Feedback] What needs to be changed or fixed? \n> ").strip()
+            if feedback:
+                break
+            print(" -> Feedback cannot be empty. Please tell the AI what to fix.")
+            
+        print(" -> Feedback received. Routing back to the AI...")
+        
+        updated_request = state['user_request'] + f"\n\nHUMAN FEEDBACK ON PREVIOUS ATTEMPT:\n{feedback}"
+        
+        return {
+            "human_approved": False,
+            "user_request": updated_request,
+            "retry_count": 0,
+            "test_results": {}
+        }
 # Conditional Logic
 
 def route_after_validation(state: AgentState):
@@ -273,6 +305,14 @@ def route_after_validation(state: AgentState):
     else:
         print(" -> Max retries reached. Triggering rollback/abort.")
         return END
+
+def route_after_human(state):
+    """Routes to END if approved, or loops back to Planner if rejected."""
+    if state.get("human_approved", True):
+        return END
+    else:
+        return "planner"
+
 
 # Build Graph
 
@@ -301,6 +341,15 @@ workflow.add_conditional_edges(
         "human_gate": "human_gate",
         "coder": "coder",
         END: END
+    }
+)
+
+workflow.add_conditional_edges(
+    "human_gate",
+    route_after_human,
+    {
+        END: END,
+        "planner": "planner"
     }
 )
 
