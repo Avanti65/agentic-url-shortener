@@ -118,7 +118,10 @@ def coder_node(state: AgentState):
             "```csharp\n"
             "// complete updated file code here\n"
             "```\n"
-            "Output the ENTIRE contents of the file, not just the changes. Do not include conversational text outside the code blocks."
+            "CRITICAL REQUIREMENT: You are modifying an existing codebase. You MUST output the ENTIRE, fully updated file from top to bottom. "
+            "NEVER use placeholders like '// ... existing code ...' or '// previous endpoints'. "
+            "You must retain all existing imports, database models, and previous endpoints. If you omit any existing code, the application will break. "
+            "Do not include conversational text outside the code blocks."
         )),
         HumanMessage(content=human_prompt)
     ]
@@ -284,6 +287,40 @@ def human_gate_node(state):
             "retry_count": 0,
             "test_results": {}
         }
+
+def doc_generator_node(state):
+    """
+    Parallel, Generates Markdown API documentation based on the plan.
+    """
+    print("\n[Node: Doc Generator] Generating API documentation in parallel...")
+    
+    plan_text = "\n".join(state.get("plan", []))
+    
+    # Simple prompt asking the LLM to write documentation
+    prompt = f"""
+    Based on the following feature plan, write a brief API documentation in Markdown format.
+    Include endpoint routes, methods, and expected payloads.
+    Do NOT write code, only Markdown documentation.
+    
+    Plan:
+    {plan_text}
+    """
+    
+    # calling llm
+    llm = get_llm()
+    response = llm.invoke(prompt)
+    docs_content = response.content
+    
+    # For now, we will simulate the LLM output to test the graph structure
+    docs_content = f"# API Documentation\n\nUpdated based on plan:\n{plan_text}"
+    
+    # Save it directly to disk
+    with open("src/UrlShortener/API_DOCS.md", "w") as f:
+        f.write(docs_content)
+        
+    print(" -> Successfully saved: src/UrlShortener/API_DOCS.md")
+    return {}
+
 # Conditional Logic
 
 def route_after_validation(state: AgentState):
@@ -322,6 +359,7 @@ workflow = StateGraph(AgentState)
 workflow.add_node("planner", planner_node)
 workflow.add_node("coder", coder_node)
 workflow.add_node("disk_writer", disk_writer_node)
+workflow.add_node("doc_generator", doc_generator_node)
 workflow.add_node("validator", validator_node)
 workflow.add_node("human_gate", human_gate_node)
 
@@ -330,8 +368,11 @@ workflow.set_entry_point("planner")
 
 # Connect nodes
 workflow.add_edge("planner", "coder")
+workflow.add_edge("planner", "doc_generator")
 workflow.add_edge("coder", "disk_writer")
 workflow.add_edge("disk_writer", "validator")
+workflow.add_edge("doc_generator", "validator")
+
 
 # Add conditional edge
 workflow.add_conditional_edges(
