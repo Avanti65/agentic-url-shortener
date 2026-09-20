@@ -1,3 +1,5 @@
+import os
+import re
 from langgraph.graph import StateGraph, END
 from state import AgentState
 from llm_factory import get_llm
@@ -45,11 +47,74 @@ Return ONLY the numbered steps as a plain text list, with no intro or outro text
 
 def coder_node(state: AgentState):
     """
-    Reads the execution plan and generates the required C# code.
-    Updates the state with a dictionary of target files and their code.
+    Reads the plan and existing codebase, prompts the LLM to generate the updated C# code,
+    streams the output to the console in real-time, and updates state['generated_code'].
     """
-    print("\n[Node: Coder] Writing C# code based on the plan...")
-    return {"generated_code": {"Program.cs": "// Dummy generated C# Code"}}
+    print("\n" + "="*50)
+    print("[Node: Coder] Synthesizing C# code from plan...")
+    print("="*50 + "\n")
+
+    # Locate and read the existing Program.cs file for context
+    target_path = "src/UrlShortener/Program.cs"
+    if not os.path.exists(target_path):
+        for root, _, files in os.walk("src"):
+            if "Program.cs" in files:
+                target_path = os.path.join(root, "Program.cs")
+                break
+
+    existing_code = ""
+    if os.path.exists(target_path):
+        with open(target_path, "r", encoding="utf-8") as f:
+            existing_code = f.read()
+
+    # Format the execution plan from state
+    plan_text = "\n".join(state.get("plan", []))
+
+    #  Construct the prompt securely without parsing confusion
+    human_prompt = (
+        f"User Request:\n{state['user_request']}\n\n"
+        f"Execution Plan:\n{plan_text}\n\n"
+        f"Current Program.cs:\n```csharp\n{existing_code}\n```\n\n"
+        "Implement the requested changes into Program.cs. Ensure all existing routes, database contexts, and models remain functional alongside the new alias logic."
+    )
+
+    messages = [
+        SystemMessage(content=(
+            "You are a principal C# .NET 8 developer. Write clean, idiomatic Minimal API code. "
+            "Return ONLY the complete updated C# file contents enclosed in a single ```csharp markdown code fence. "
+            "Do not include conversational greetings, explanations, or notes outside the code fence."
+        )),
+        HumanMessage(content=human_prompt)
+    ]
+
+    # Stream response
+    llm = get_llm()
+    full_response = ""
+
+    for chunk in llm.stream(messages):
+        content = chunk.content
+        if isinstance(content, list):
+            text_piece = "".join([
+                b.get("text", "") if isinstance(b, dict) else str(b) 
+                for b in content
+            ])
+        else:
+            text_piece = str(content)
+
+        print(text_piece, end="", flush=True)
+        full_response += text_piece
+
+    print("\n\n" + "-"*50)
+    print(" -> Code generation complete.")
+    print("-"*50)
+
+    # 5. Extract raw code from markdown fences
+    code_match = re.search(r"```(?:csharp)?\s*(.*?)\s*```", full_response, re.DOTALL)
+    extracted_code = code_match.group(1) if code_match else full_response.strip()
+
+    return {
+        "generated_code": {target_path: extracted_code}
+    }
 
 def validator_node(state: AgentState):
     """
