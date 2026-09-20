@@ -26,15 +26,8 @@ Return ONLY the numbered steps as a plain text list, with no intro or outro text
     
     # Invoke with the message list
     response = llm.invoke(messages)
-    
-    # Safely extract text content
-    raw_content = response.content
-    if isinstance(raw_content, list):
-        # Join any text blocks together
-        raw_content = "".join([
-            block.get("text", "") if isinstance(block, dict) else str(block) 
-            for block in raw_content
-        ])
+    raw_content = extract_text_from_content(response.content)
+    plan_steps = [step.strip() for step in raw_content.split('\n') if step.strip()]
     
     # Clean up the response
     plan_steps = [step.strip() for step in raw_content.split('\n') if step.strip()]
@@ -92,15 +85,7 @@ def coder_node(state: AgentState):
     full_response = ""
 
     for chunk in llm.stream(messages):
-        content = chunk.content
-        if isinstance(content, list):
-            text_piece = "".join([
-                b.get("text", "") if isinstance(b, dict) else str(b) 
-                for b in content
-            ])
-        else:
-            text_piece = str(content)
-
+        text_piece = extract_text_from_content(chunk.content)
         print(text_piece, end="", flush=True)
         full_response += text_piece
 
@@ -197,3 +182,16 @@ workflow.add_edge("human_gate", END)
 
 # Compile
 app = workflow.compile()
+
+# Helper function to extract text content
+def extract_text_from_content(content) -> str:
+    """
+    Safely extracts plain text whether the LLM returns a string 
+    or a list of multimodal/structured blocks.
+    """
+    if isinstance(content, list):
+        return "".join([
+            b.get("text", "") if isinstance(b, dict) else str(b) 
+            for b in content
+        ])
+    return str(content)
