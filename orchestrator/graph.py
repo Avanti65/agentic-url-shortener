@@ -4,6 +4,7 @@ from langgraph.graph import StateGraph, END
 from state import AgentState
 from llm_factory import get_llm
 from langchain_core.messages import SystemMessage, HumanMessage
+import subprocess
 
 # Define the Nodes (Agentic Steps)
 def planner_node(state: AgentState):
@@ -129,22 +130,48 @@ def disk_writer_node(state: AgentState):
 
 def validator_node(state: AgentState):
     """
-    Executes the .NET test suite against the generated code.
-    Simulates a failure on the first attempt and success on subsequent attempts.
-    Updates test results and increments the retry counter.
+    Executes the real .NET compiler against the generated code.
+    Captures the output to determine if the build succeeded.
     """
-    print("\n[Node: Validator] Running 'dotnet test' against the codebase...")
+    print("\n[Node: Validator] Running real 'dotnet build' against the codebase...")
     
-    current_retries = state.get("retry_count", 0)
-    passed = current_retries > 0 
+    # Define the path to your .NET project
+    # (Adjust this if your .csproj is located in a different folder)
+    project_path = "src/UrlShortener"
     
-    if passed:
-        print(" -> Output: Tests Passed!")
-    else:
-        print(" -> Output: Tests Failed! (Simulated)")
+    try:
+        # Run the dotnet build command in the terminal
+        result = subprocess.run(
+            ["dotnet", "build", project_path],
+            capture_output=True,
+            text=True,
+            check=False # We don't want Python to crash on a build error; we want to catch it!
+        )
         
+        # returncode 0 means the build was successful
+        passed = (result.returncode == 0)
+        
+        if passed:
+            print(" -> Output: Build Passed Successfully! ✅")
+            compiler_output = "Build succeeded."
+        else:
+            print(" -> Output: Build Failed! ❌")
+            print(" -> Capturing errors for the next attempt...")
+            # Grab the actual error so we can feed it back to the AI
+            compiler_output = result.stdout + "\n" + result.stderr
+            
+    except Exception as e:
+        passed = False
+        compiler_output = f"Failed to execute dotnet command: {str(e)}"
+        print(f" -> Execution Error: {compiler_output}")
+        
+    current_retries = state.get("retry_count", 0)
+    
     return {
-        "test_results": {"passed": passed}, 
+        "test_results": {
+            "passed": passed,
+            "output": compiler_output  # Saving the real error to state
+        }, 
         "retry_count": current_retries + 1
     }
 
