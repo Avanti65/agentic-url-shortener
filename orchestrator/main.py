@@ -1,29 +1,50 @@
 from graph import app
+import time
 
 def main():
     """Entry point for the Agentic SDLC Orchestrator."""
     print("Starting Agentic SDLC Orchestrator...\n")
     
     # The initial input to pass into the state machine
-    # Update the request to build the Click Tracking feature
     initial_state = {
-        "user_request": """Add a 'Clicks' integer property to the short URL database model with a default value of 0. 
-Update the GET redirect endpoint so that every time a short URL is accessed, the Clicks counter is incremented by 1 and saved to the database. 
-Make sure the new Clicks property is returned in the response when creating a new short URL.""",
+        "user_request": "Add a GET /stats/{shortCode} endpoint that returns the original URL, short code, and total clicks as JSON without redirecting the user. Do not modify any database models.",
         "retry_count": 0
     }
     
-    # Invoke the LangGraph
+    # 1. Track Start Time
+    start_time = time.time()
+    
+    # 2. Invoke the graph
     result = app.invoke(initial_state)
     
-    print("\nWorkflow Complete. Final State Keys:")
+    # 3. Track End Time
+    end_time = time.time()
     
-    # Print out the keys available in our final state to verify data passed through
-    for key, value in result.items():
-        if key in ["plan", "retry_count"]:
-            print(f"- {key}: {value}")
-        else:
-            print(f"- {key}: (Data present)")
+    # 4. Calculate Reliability Metrics
+    latency_seconds = round(end_time - start_time, 2)
+    total_retries = result.get("retry_count", 0)
+    
+    # Determine final outcome state
+    success_status = "SUCCESS" if result.get("human_approved") is not False else "FAILED/REJECTED"
+    
+    print("\n" + "="*50)
+    print("📈 AGENTIC TELEMETRY & RELIABILITY METRICS")
+    print("="*50)
+    print(f"Outcome Status       : {success_status}")
+    print(f"End-to-End Latency   : {latency_seconds} seconds")
+    print(f"Retry/Error Frequency: {total_retries} compiler errors caught & fixed")
+    
+    if total_retries > 0:
+        # Approximate MTTR based on execution time divided by the number of automated fixes
+        approx_mttr = round(latency_seconds / (total_retries + 1), 2)
+        print(f"Approximate MTTR     : {approx_mttr} seconds per autonomous fix")
+    else:
+        print("Approximate MTTR     : 0 seconds (Zero build failures)")
+        
+    print("="*50)
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
