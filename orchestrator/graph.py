@@ -16,7 +16,12 @@ def planner_node(state: AgentState):
     print("\n[Node: Planner] LLM is analyzing the request...")
     
     messages = [
-        SystemMessage(content="You are a senior software architect working on a C# .NET 10 Minimal API URL Shortener."),
+        SystemMessage(content=(
+            "You are a senior software architect working on a C# .NET 10 Minimal API URL Shortener. "
+            "CRITICAL RULE: Your ONLY purpose is to plan URL Shortener features (URLs, database models, redirects, backend infrastructure). "
+            "If the user asks for poems, recipes, jokes, or general knowledge, do NOT try to fulfill the request by designing novelty C# endpoints. "
+            "If the core intent of the prompt is not strictly related to URL shortening or API infrastructure, you must output EXACTLY and ONLY the word 'REJECTED'."
+        )),
         HumanMessage(content=f"""The user has requested the following feature:
 "{state['user_request']}"
 
@@ -44,6 +49,17 @@ Return ONLY the numbered steps as a plain text list, with no intro or outro text
         print(f"    {step}")
         
     return {"plan": plan_steps}
+
+def route_after_planner(state):
+    plan_text = "\n".join(state.get("plan", []))
+    
+    if "REJECTED" in plan_text:
+        print("\n[Router] Irrelevant prompt detected. Aborting workflow and bypassing execution nodes.")
+        return "end"
+    
+    print("\n[Router] Valid prompt. Forking to Coder and Doc Generator in parallel.")
+    # Return a list of node names to trigger them simultaneously
+    return ["coder", "doc_generator"]
 
 def coder_node(state: AgentState):
     """
@@ -366,15 +382,25 @@ workflow.add_node("human_gate", human_gate_node)
 # set start
 workflow.set_entry_point("planner")
 
+# Add conditional edge
+workflow.add_conditional_edges(
+    "planner",
+    route_after_planner,
+    {
+        "end": END,
+        "coder": "coder",
+        "doc_generator": "doc_generator"
+    }
+)
+
 # Connect nodes
-workflow.add_edge("planner", "coder")
-workflow.add_edge("planner", "doc_generator")
 workflow.add_edge("coder", "disk_writer")
 workflow.add_edge("disk_writer", "validator")
 workflow.add_edge("doc_generator", "validator")
 
-
 # Add conditional edge
+
+
 workflow.add_conditional_edges(
     "validator",
     route_after_validation,
