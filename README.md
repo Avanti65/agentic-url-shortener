@@ -46,20 +46,19 @@ The system successfully executed the following engineering scenarios with full a
 
 1. Clone the repository and navigate to the root directory.
 2. Install Python dependencies:
+
    ```bash
    pip install langgraph langchain-google-genai python-dotenv
    ```
 
-````
-
 3. Configure Environment Variables:
-Create a `.env` file in the root directory and configure your LLM provider and API key:
+   Create a `.env` file in the root directory and configure your LLM provider and API key:
+
 ```env
 LLM_PROVIDER=gemini
 GEMINI_API_KEY="your-api-key-here"
 # OPENAI_API_KEY="optional-alternative-key"
-
-````
+```
 
 4. Run the orchestrator:
 
