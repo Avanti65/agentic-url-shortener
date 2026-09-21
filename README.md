@@ -45,45 +45,54 @@ The system successfully executed the following engineering scenarios with full a
 ### Running the Orchestrator
 
 1. Clone the repository and navigate to the root directory.
-
 2. Install Python dependencies:
-   pip install langgraph langchain-google-genai
-
-3. Configure Environment Variables:
-   Create a `.env` file in the root directory and configure your LLM provider and API key:
-
-   ```env
-   LLM_PROVIDER=gemini
-   GEMINI_API_KEY="your-api-key-here"
-   # OPENAI_API_KEY="optional-alternative-key"
-
+   ```bash
+   pip install langgraph langchain-google-genai python-dotenv
    ```
 
+````
+
+3. Configure Environment Variables:
+Create a `.env` file in the root directory and configure your LLM provider and API key:
+```env
+LLM_PROVIDER=gemini
+GEMINI_API_KEY="your-api-key-here"
 # OPENAI_API_KEY="optional-alternative-key"
 
+````
+
 4. Run the orchestrator:
-   python3 orchestrator/main.py
+
+```bash
+python3 orchestrator/main.py
+
+```
 
 5. You will be greeted by an **interactive CLI menu**. Select your task category (Feature, Tests, Refactor, or Custom) and enter your prompt.
-
 6. Approve or reject the changes at the CLI Human Gate. Final execution telemetry (latency, retry frequency, MTTR) will print upon completion.
 
 ### Running the C# Target Application
 
 1. Navigate to the target project directory:
 
+```bash
 cd src/UrlShortener
+
+```
 
 2. Start the Minimal API server:
 
+```bash
 dotnet run
+
+```
 
 ## 4. Testing, Limitations, and Trade-offs
 
 - **Validation Approach:** We utilize a "Shift-Left" validation strategy. The `validator_node` runs a strict `dotnet build` to catch syntactic and structural errors before a human ever reviews the code.
 - **File Scope vs. Workspace Scan:** To manage LLM context windows and prevent rate-limit exhaustion, the orchestrator explicitly targets and rewrites specific files rather than parsing the entire workspace on every loop.
 - **Limitation:** The validation currently relies on compile-time checks (`dotnet build`). Future iterations should implement runtime verification (`dotnet test`) to validate complex business logic autonomously.
-- **LLM Extensibility:** While this orchestrator is currently configured to use Google Gemini (gemini-3.5-flash), the LangChain abstraction layer makes the architecture LLM-agnostic. By updating the model initialization in graph.py, the system can seamlessly swap to OpenAI, Anthropic, or local open-source models with minimal code changes.
+- **LLM Extensibility:** While this orchestrator is currently configured to use Google Gemini (`gemini-3.5-flash`), the LangChain abstraction layer makes the architecture LLM-agnostic. By updating the model initialization in `graph.py`, the system can seamlessly swap to OpenAI, Anthropic, or local open-source models with minimal code changes.
 
 ## 5. Final Engineering Summary
 
